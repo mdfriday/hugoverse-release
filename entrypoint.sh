@@ -63,8 +63,18 @@ if [ -n "$INPUT_GITHUB_TOKEN" ]; then
     echo "Setting PRE_COMMAND=$PRE_COMMAND"
   fi
   
+  # Handle binary name
+  if [ -n "$INPUT_BINARY_NAME" ]; then
+    export BINARY_NAME="$INPUT_BINARY_NAME"
+    echo "Setting BINARY_NAME=$BINARY_NAME"
+  fi
+  
   echo "Environment setup complete"
 fi
+
+# Set default values for required variables
+export PROJECT_PATH=${PROJECT_PATH:-.}
+export BINARY_NAME=${BINARY_NAME:-hugoverse}
 
 # Run setup for Go
 if [ -f "/setup-go.sh" ]; then

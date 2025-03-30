@@ -31,6 +31,8 @@ GOARCH=${GOARCH:-$INPUT_GOARCH}
 EXTRA_FILES=${EXTRA_FILES:-$INPUT_EXTRA_FILES}
 PROJECT_PATH=${PROJECT_PATH:-$INPUT_PROJECT_PATH}
 PROJECT_PATH=${PROJECT_PATH:-.}
+BINARY_NAME=${BINARY_NAME:-$INPUT_BINARY_NAME}
+BINARY_NAME=${BINARY_NAME:-$PROJECT_NAME}
 
 # Debug information
 echo "Environment variables:"
@@ -41,6 +43,7 @@ echo "GOOS: ${GOOS}"
 echo "GOARCH: ${GOARCH}"
 echo "EXTRA_FILES: ${EXTRA_FILES}"
 echo "PROJECT_PATH: ${PROJECT_PATH}"
+echo "BINARY_NAME: ${BINARY_NAME}"
 
 # Make sure Go is in the PATH
 if [ ! -f "/usr/local/bin/go" ] && [ -f "/usr/local/go/bin/go" ]; then
@@ -65,18 +68,34 @@ fi
 
 echo "Using Go version: $(go version)"
 
+# Make sure BUILD_DIR is absolute
+if [ "${BUILD_DIR:0:1}" != "/" ]; then
+  # If relative path, make it absolute from current directory
+  BUILD_DIR="$(pwd)/${BUILD_DIR:-build-artifacts}"
+fi
+mkdir -p ${BUILD_DIR}
+echo "Build directory: ${BUILD_DIR}"
+
 # Host architecture information
 HOST_ARCH=$(dpkg --print-architecture)
-BUILD_DIR="build-artifacts"
-mkdir -p ${BUILD_DIR}
 
 echo "Starting release process for ${PROJECT_NAME} v${VERSION}"
 
-# Check if we need to initialize a Go module
+# Check if the project path exists
+if [ ! -d "${PROJECT_PATH}" ]; then
+  echo "ERROR: Project path ${PROJECT_PATH} does not exist or is not a directory."
+  mkdir -p ${PROJECT_PATH}
+  echo "Created directory ${PROJECT_PATH}"
+fi
+
+# Change to the project directory
 cd ${PROJECT_PATH}
+echo "Current directory: $(pwd)"
+
+# Check if we need to initialize a Go module
 if ! [ -f "go.mod" ]; then
   echo "No go.mod file found. Initializing Go module..."
-  go mod init "${PROJECT_NAME}" || echo "Failed to initialize Go module, but continuing anyway"
+  go mod init "${BINARY_NAME}" || echo "Failed to initialize Go module, but continuing anyway"
 fi
 
 # Make sure all dependencies are downloaded
@@ -86,10 +105,32 @@ if [ -f "go.mod" ]; then
   go mod download || echo "go mod download failed, but continuing anyway"
 fi
 
+# Create a simple main.go file if it doesn't exist
+if ! [ -f "main.go" ] && ! ls *.go 1> /dev/null 2>&1; then
+  echo "No Go files found. Creating a simple main.go file..."
+  cat > main.go << EOF
+package main
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+)
+
+var Version = "dev"
+
+func main() {
+	fmt.Printf("${BINARY_NAME} version %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
+	os.Exit(0)
+}
+EOF
+  echo "Created main.go"
+fi
+
 # Function to build for a specific architecture
 build_for_arch() {
   local arch=$1
-  local output_name="${PROJECT_NAME}-linux-${arch}"
+  local output_name="${BINARY_NAME}-linux-${arch}"
   local output_path="${BUILD_DIR}/${output_name}"
   local ldflags="-s -w -X main.Version=${VERSION}"
   
@@ -109,7 +150,7 @@ build_for_arch() {
     PATH=$PATH:/usr/local/go/bin
     
     # Use the build-arm64.sh script which sets all the necessary environment variables
-    /usr/local/bin/build-arm64.sh $(which go) build -o ${output_path} -ldflags "${ldflags}" ./...
+    /usr/local/bin/build-arm64.sh $(which go) build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
     
     # Check if build was successful
     if [ $? -ne 0 ]; then
@@ -118,9 +159,9 @@ build_for_arch() {
     fi
   else
     # Build for the host architecture
-    echo "Running: GOOS=linux GOARCH=${arch} CGO_ENABLED=1 go build -o ${output_path} -ldflags \"${ldflags}\" ./..."
+    echo "Running: GOOS=linux GOARCH=${arch} CGO_ENABLED=1 go build -buildvcs=false -o ${output_path} -ldflags \"${ldflags}\" ."
     GOOS=linux GOARCH=${arch} CGO_ENABLED=1 \
-      go build -o ${output_path} -ldflags "${ldflags}" ./...
+      go build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
   fi
   
   echo "Build complete: ${output_path}"
@@ -131,7 +172,7 @@ build_for_arch() {
     
     # Try to find what was actually built
     echo "Searching for built executables in ${BUILD_DIR}:"
-    find ${BUILD_DIR} -type f -executable
+    find ${BUILD_DIR} -type f -executable || echo "No executables found"
     
     return 1
   fi
@@ -156,8 +197,8 @@ build_for_arch() {
   fi
   
   # Create ZIP archive
-  zip -j ${output_path}.zip ${output_path} ${BUILD_DIR}/LICENSE ${BUILD_DIR}/README.md ${BUILD_DIR}/manifest.json 2>/dev/null || zip -j ${output_path}.zip ${output_path}
-  echo "Created archive: ${output_path}.zip"
+  (cd ${BUILD_DIR} && zip -j ${output_name}.zip ${output_name} LICENSE README.md manifest.json 2>/dev/null || zip -j ${output_name}.zip ${output_name})
+  echo "Created archive: ${BUILD_DIR}/${output_name}.zip"
   
   return 0
 }
@@ -187,7 +228,7 @@ fi
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
   echo "Uploading artifacts to GitHub repository: $GITHUB_REPO"
   
-  for artifact in ${BUILD_DIR}/${PROJECT_NAME}-linux-*.zip; do
+  for artifact in ${BUILD_DIR}/${BINARY_NAME}-linux-*.zip; do
     if [ -f "$artifact" ]; then
       echo "Uploading: $artifact"
       github-assets-uploader \

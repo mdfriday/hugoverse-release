@@ -42,6 +42,10 @@ inputs:
     description: 'Command to run before building (e.g., go mod init)'
     required: false
     default: ''
+  binary_name:
+    description: 'Name of the binary to build (defaults to hugoverse)'
+    required: false
+    default: 'hugoverse'
 
 outputs:
   release_asset_dir:
@@ -60,3 +64,4 @@ runs:
     INPUT_RELEASE_REPO: ${{ inputs.release_repo }}
     INPUT_PROJECT_PATH: ${{ inputs.project_path }}
     INPUT_PRE_COMMAND: ${{ inputs.pre_command }}
+    INPUT_BINARY_NAME: ${{ inputs.binary_name }}
