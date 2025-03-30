@@ -48,9 +48,9 @@ jobs:
     - name: Build & Publish to DockerHub
       uses: elgohr/Publish-Docker-Github-Action@v5
       with:
-        name: ${{ github.repository }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.REGISTRY_TOKEN }}
+        name: mdfriday/hugoverse-release
+        username: mdfriday
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
         platforms: linux/amd64,linux/arm64
         snapshot: false
         tags: "${{ env.IMAGE_TAG }}"
