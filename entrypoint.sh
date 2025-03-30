@@ -95,17 +95,78 @@ echo "Verifying Go installation:"
 which go || echo "ERROR: Go not found in PATH after setup!"
 go version || echo "ERROR: Go command failed after setup!"
 
+# Process project path: normalize and prepare directories
+# Resolve paths before attempting to cd to them
+normalize_path() {
+  local path=$1
+  local base_dir=${2:-$PWD}
+  
+  # Check if the path is absolute
+  if [[ "$path" = /* ]]; then
+    echo "$path"
+    return
+  fi
+  
+  # Handle paths with '..' components by computing the real path
+  # Use a subshell to not affect the current directory
+  (
+    cd "$base_dir" || return 1
+    if [[ "$path" == *".."* ]]; then
+      # For paths with '..' components, use realpath to resolve them
+      # Create intermediate directories if they don't exist
+      local dir_to_create=$(dirname "$path")
+      mkdir -p "$dir_to_create" 2>/dev/null || true
+      realpath -m "$path" 2>/dev/null || echo "$path"
+    else
+      # For regular paths, just return as is
+      echo "$path"
+    fi
+  )
+}
+
+# Normalize the project path
+NORMALIZED_PROJECT_PATH=$(normalize_path "$PROJECT_PATH")
+echo "Normalized project path: $NORMALIZED_PROJECT_PATH"
+
+# Create project directory if it doesn't exist
+if [ ! -d "$NORMALIZED_PROJECT_PATH" ]; then
+  echo "Creating project directory: $NORMALIZED_PROJECT_PATH"
+  mkdir -p "$NORMALIZED_PROJECT_PATH"
+fi
+
 # Execute pre-command if provided
 if [ -n "$PRE_COMMAND" ]; then
   echo "Executing pre-command: $PRE_COMMAND"
-  if [ -n "$PROJECT_PATH" ] && [ "$PROJECT_PATH" != "." ]; then
+  
+  # Determine the directory to execute in
+  if [ -n "$NORMALIZED_PROJECT_PATH" ] && [ "$NORMALIZED_PROJECT_PATH" != "." ]; then
+    # Make sure the directory exists before cd
+    if [ ! -d "$NORMALIZED_PROJECT_PATH" ]; then
+      echo "Creating directory before running pre-command: $NORMALIZED_PROJECT_PATH"
+      mkdir -p "$NORMALIZED_PROJECT_PATH"
+    fi
+    
     # Execute in the project directory
-    (cd "$PROJECT_PATH" && eval "$PRE_COMMAND")
+    echo "Running pre-command in: $NORMALIZED_PROJECT_PATH"
+    (cd "$NORMALIZED_PROJECT_PATH" && eval "$PRE_COMMAND") || {
+      echo "Error executing pre-command in $NORMALIZED_PROJECT_PATH"
+      # Create parent directories and try again
+      parent_dir=$(dirname "$NORMALIZED_PROJECT_PATH")
+      echo "Trying to create parent directory: $parent_dir"
+      mkdir -p "$parent_dir"
+      (cd "$parent_dir" && eval "$PRE_COMMAND") || {
+        echo "Error executing pre-command in parent directory. Running in current directory."
+        eval "$PRE_COMMAND"
+      }
+    }
   else
     # Execute in the current directory
     eval "$PRE_COMMAND"
   fi
 fi
+
+# Export the normalized project path for release.sh
+export PROJECT_PATH="$NORMALIZED_PROJECT_PATH"
 
 # Run release script
 if [ -f "/release.sh" ]; then
