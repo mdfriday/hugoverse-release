@@ -30,31 +30,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
   liborc-0.4-dev \
   gcc \
   g++ \
-  crossbuild-essential-arm64 \
   gcc-aarch64-linux-gnu \
   g++-aarch64-linux-gnu \
-  libc6-dev-arm64-cross \
   && rm -rf /var/lib/apt/lists/*
-
-# Install arm64 version of libvips and its dependencies
-RUN if [ "$(dpkg --print-architecture)" != "arm64" ]; then \
-  dpkg --add-architecture arm64 && \
-  DEBIAN_FRONTEND=noninteractive apt-get update && \
-  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
-  libvips-dev:arm64 \
-  libglib2.0-dev:arm64 \
-  libjpeg-dev:arm64 \
-  libpng-dev:arm64 \
-  libwebp-dev:arm64 \
-  libgif-dev:arm64 \
-  libtiff-dev:arm64 \
-  libexif-dev:arm64 \
-  libgsf-1-dev:arm64 \
-  liblcms2-dev:arm64 \
-  libheif-dev:arm64 \
-  liborc-0.4-dev:arm64 \
-  && rm -rf /var/lib/apt/lists/* ; \
-  fi
 
 # install latest upx by wget instead of `apt install upx-ucl`
 RUN export arch=$(dpkg --print-architecture) || arch=${TARGETARCH} && \
@@ -74,6 +52,14 @@ RUN export arch=$(dpkg --print-architecture) && wget --no-check-certificate --pr
 
 # Add Go environment variables to support CGO
 ENV CGO_ENABLED=1
+
+# Configure pkg-config to find arm64 libraries
+RUN mkdir -p /usr/lib/aarch64-linux-gnu/pkgconfig && \
+    pkg-config --exists vips && \
+    NATIVE_VIPS_LIBS=$(pkg-config --libs vips) && \
+    NATIVE_VIPS_CFLAGS=$(pkg-config --cflags vips) && \
+    echo "Converting native pkgconfig to aarch64 compatible" && \
+    sed 's|/usr/lib/x86_64-linux-gnu|/usr/lib/aarch64-linux-gnu|g' /usr/lib/x86_64-linux-gnu/pkgconfig/vips.pc > /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc
 
 # Configure cross-compilation environment for ARM64
 RUN echo '#!/bin/bash\nexport CC=aarch64-linux-gnu-gcc\nexport CXX=aarch64-linux-gnu-g++\nexport CGO_ENABLED=1\nexport GOOS=linux\nexport GOARCH=arm64\nexport PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig\n\n$@' > /usr/local/bin/build-arm64.sh && \

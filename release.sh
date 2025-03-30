@@ -26,16 +26,15 @@ build_for_arch() {
   # Set up architecture-specific environment
   if [ "$arch" = "arm64" ] && [ "$HOST_ARCH" != "arm64" ]; then
     echo "Using cross-compilation for ARM64..."
-    if [ -f "/arm64.env" ]; then
-      source /arm64.env
-    fi
     
-    # Build with ARM64-specific flags
-    GOOS=linux GOARCH=arm64 CGO_ENABLED=1 \
-      CC=aarch64-linux-gnu-gcc \
-      CXX=aarch64-linux-gnu-g++ \
-      PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
-      go build -o ${output_path} -ldflags "${ldflags}" .
+    # Use the build-arm64.sh script which sets all the necessary environment variables
+    /usr/local/bin/build-arm64.sh go build -o ${output_path} -ldflags "${ldflags}" .
+    
+    # Check if build was successful
+    if [ $? -ne 0 ]; then
+      echo "ARM64 build failed. Check cross-compilation setup and dependencies."
+      return 1
+    fi
   else
     # Build for the host architecture
     GOOS=linux GOARCH=${arch} CGO_ENABLED=1 \
@@ -60,11 +59,18 @@ build_for_arch() {
 # Build for specified architectures
 if [ -n "$TARGET_ARCH" ]; then
   # Build for specific target architecture
-  build_for_arch "$TARGET_ARCH"
+  build_for_arch "$TARGET_ARCH" || exit 1
 else
-  # Build for both amd64 and arm64
-  build_for_arch "amd64"
-  build_for_arch "arm64"
+  # Build for amd64 first
+  build_for_arch "amd64" || exit 1
+  
+  # Try building for arm64 if amd64 succeeded
+  echo "Attempting ARM64 build..."
+  if build_for_arch "arm64"; then
+    echo "ARM64 build successful"
+  else
+    echo "ARM64 build failed, but amd64 build was successful. Continuing..."
+  fi
 fi
 
 # Upload to GitHub if token and repo are provided

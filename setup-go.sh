@@ -31,29 +31,36 @@ export CGO_ENABLED=1
 echo "Go environment:"
 go env
 
-# Set up architecture-specific environment for cross-compilation
+# Verify cross-compilation setup
 if [ "$TARGET_ARCH" = "arm64" ] && [ "$ARCH" != "arm64" ]; then
-  echo "Setting up cross-compilation environment for ARM64..."
-  
-  # Set environment variables for ARM64 cross-compilation
-  export CGO_ENABLED=1
-  export CC=aarch64-linux-gnu-gcc
-  export CXX=aarch64-linux-gnu-g++
-  export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+  echo "Verifying ARM64 cross-compilation setup..."
   
   # Verify cross-compilation toolchain
-  echo "Cross-compiler version:"
-  $CC --version
+  if command -v aarch64-linux-gnu-gcc &> /dev/null; then
+    echo "Cross-compiler version:"
+    aarch64-linux-gnu-gcc --version
+  else
+    echo "WARNING: aarch64-linux-gnu-gcc not found. ARM64 cross-compilation will likely fail."
+  fi
   
-  # Create a global environment file that can be sourced by other scripts
-  cat > /arm64.env << EOF
-export CGO_ENABLED=1
-export GOOS=linux
-export GOARCH=arm64
-export CC=aarch64-linux-gnu-gcc
-export CXX=aarch64-linux-gnu-g++
-export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
-EOF
+  # Verify pkg-config setup for ARM64
+  if [ -d "/usr/lib/aarch64-linux-gnu/pkgconfig" ]; then
+    echo "ARM64 pkg-config directory exists."
+    
+    # Check if vips.pc exists for ARM64
+    if [ -f "/usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc" ]; then
+      echo "ARM64 libvips pkg-config file found."
+    else
+      echo "WARNING: ARM64 libvips pkg-config file not found."
+    fi
+  else
+    echo "WARNING: ARM64 pkg-config directory not found."
+  fi
+  
+  # Test pkg-config for ARM64
+  echo "Testing pkg-config for ARM64 libvips:"
+  PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig pkg-config --libs vips || \
+    echo "WARNING: pkg-config failed to find libvips for ARM64."
 fi
 
 echo "Go setup complete!"
