@@ -55,14 +55,53 @@ ENV CGO_ENABLED=1
 
 # Configure pkg-config to find arm64 libraries
 RUN mkdir -p /usr/lib/aarch64-linux-gnu/pkgconfig && \
-    pkg-config --exists vips && \
-    NATIVE_VIPS_LIBS=$(pkg-config --libs vips) && \
-    NATIVE_VIPS_CFLAGS=$(pkg-config --cflags vips) && \
-    echo "Converting native pkgconfig to aarch64 compatible" && \
-    sed 's|/usr/lib/x86_64-linux-gnu|/usr/lib/aarch64-linux-gnu|g' /usr/lib/x86_64-linux-gnu/pkgconfig/vips.pc > /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc
+    echo "Creating custom vips.pc for ARM64 cross-compilation" && \
+    echo "prefix=/usr" > /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "exec_prefix=\${prefix}" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "libdir=\${prefix}/lib/aarch64-linux-gnu" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "includedir=\${prefix}/include" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "Name: vips" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "Description: Image processing library" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "Version: 8.7.4" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "Requires: glib-2.0 >= 2.40.0 gobject-2.0 >= 2.40.0 gmodule-2.0 >= 2.40.0 gio-2.0 >= 2.40.0" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "Requires.private: libgsf-1 >= 1.14.26 fftw3 >= 3.1.0 lcms2 >= 2.0.0 libexif >= 0.6" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "Libs: -L\${libdir} -lvips -lm" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "Libs.private: -lm -lz" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    echo "Cflags: -I\${includedir}" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc
 
 # Configure cross-compilation environment for ARM64
-RUN echo '#!/bin/bash\nexport CC=aarch64-linux-gnu-gcc\nexport CXX=aarch64-linux-gnu-g++\nexport CGO_ENABLED=1\nexport GOOS=linux\nexport GOARCH=arm64\nexport PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig\n\n$@' > /usr/local/bin/build-arm64.sh && \
+RUN echo '#!/bin/bash\n\
+# Cross-compilation script for ARM64 architecture\n\
+\n\
+# Set basic environment variables for ARM64 cross-compilation\n\
+export CGO_ENABLED=1\n\
+export GOOS=linux\n\
+export GOARCH=arm64\n\
+\n\
+# Set C/C++ cross-compilers\n\
+export CC=aarch64-linux-gnu-gcc\n\
+export CXX=aarch64-linux-gnu-g++\n\
+\n\
+# Set pkg-config path for ARM64\n\
+export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig\n\
+\n\
+# Set additional environment variables to help with linking\n\
+export CGO_LDFLAGS="-L/usr/aarch64-linux-gnu/lib/"\n\
+export CGO_CFLAGS="-I/usr/include/aarch64-linux-gnu"\n\
+\n\
+# Print environment for debugging\n\
+echo "=== ARM64 Build Environment ==="\n\
+echo "CC: $CC"\n\
+echo "CXX: $CXX"\n\
+echo "GOOS: $GOOS"\n\
+echo "GOARCH: $GOARCH"\n\
+echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"\n\
+echo "==========================="\n\
+\n\
+# Execute the actual command\n\
+echo "Running command for ARM64: $@"\n\
+exec "$@"' > /usr/local/bin/build-arm64.sh && \
     chmod +x /usr/local/bin/build-arm64.sh
 
 COPY *.sh /
