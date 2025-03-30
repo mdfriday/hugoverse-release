@@ -1,10 +1,11 @@
-
 FROM debian:buster-slim
 ARG UPX_VER
 ARG UPLOADER_VER
+ARG TARGETARCH
 ENV UPX_VER=${UPX_VER:-4.0.0}
 ENV UPLOADER_VER=${UPLOADER_VER:-v0.13.0}
 
+# Install core dependencies including vips and CGO requirements
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
   curl \
   wget \
@@ -14,6 +15,21 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
   xz-utils \
   jq \
   ca-certificates \
+  pkg-config \
+  libvips-dev \
+  libglib2.0-dev \
+  libjpeg-dev \
+  libpng-dev \
+  libwebp-dev \
+  libgif-dev \
+  libtiff-dev \
+  libexif-dev \
+  libgsf-1-dev \
+  liblcms2-dev \
+  libheif-dev \
+  liborc-0.4-dev \
+  gcc \
+  g++ \
   && rm -rf /var/lib/apt/lists/*
 
 # install latest upx 3.96 by wget instead of `apt install upx-ucl`(only 3.95)
@@ -30,6 +46,9 @@ RUN export arch=$(dpkg --print-architecture) && wget --no-check-certificate --pr
   mv github-assets-uploader /usr/sbin/ && \
   rm -f github-assets-uploader.tar.gz && \
   github-assets-uploader -version
+
+# Add Go environment variables to support CGO
+ENV CGO_ENABLED=1
 
 COPY *.sh /
 ENTRYPOINT ["/entrypoint.sh"]
