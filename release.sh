@@ -29,6 +29,8 @@ fi
 GOOS=${GOOS:-$INPUT_GOOS}
 GOARCH=${GOARCH:-$INPUT_GOARCH}
 EXTRA_FILES=${EXTRA_FILES:-$INPUT_EXTRA_FILES}
+PROJECT_PATH=${PROJECT_PATH:-$INPUT_PROJECT_PATH}
+PROJECT_PATH=${PROJECT_PATH:-.}
 
 # Debug information
 echo "Environment variables:"
@@ -38,6 +40,7 @@ echo "VERSION: ${VERSION}"
 echo "GOOS: ${GOOS}"
 echo "GOARCH: ${GOARCH}"
 echo "EXTRA_FILES: ${EXTRA_FILES}"
+echo "PROJECT_PATH: ${PROJECT_PATH}"
 
 # Make sure Go is in the PATH
 if [ ! -f "/usr/local/bin/go" ] && [ -f "/usr/local/go/bin/go" ]; then
@@ -69,6 +72,20 @@ mkdir -p ${BUILD_DIR}
 
 echo "Starting release process for ${PROJECT_NAME} v${VERSION}"
 
+# Check if we need to initialize a Go module
+cd ${PROJECT_PATH}
+if ! [ -f "go.mod" ]; then
+  echo "No go.mod file found. Initializing Go module..."
+  go mod init "${PROJECT_NAME}" || echo "Failed to initialize Go module, but continuing anyway"
+fi
+
+# Make sure all dependencies are downloaded
+if [ -f "go.mod" ]; then
+  echo "Downloading dependencies..."
+  go mod tidy || echo "go mod tidy failed, but continuing anyway"
+  go mod download || echo "go mod download failed, but continuing anyway"
+fi
+
 # Function to build for a specific architecture
 build_for_arch() {
   local arch=$1
@@ -92,7 +109,7 @@ build_for_arch() {
     PATH=$PATH:/usr/local/go/bin
     
     # Use the build-arm64.sh script which sets all the necessary environment variables
-    /usr/local/bin/build-arm64.sh $(which go) build -o ${output_path} -ldflags "${ldflags}" .
+    /usr/local/bin/build-arm64.sh $(which go) build -o ${output_path} -ldflags "${ldflags}" ./...
     
     # Check if build was successful
     if [ $? -ne 0 ]; then
@@ -101,8 +118,9 @@ build_for_arch() {
     fi
   else
     # Build for the host architecture
+    echo "Running: GOOS=linux GOARCH=${arch} CGO_ENABLED=1 go build -o ${output_path} -ldflags \"${ldflags}\" ./..."
     GOOS=linux GOARCH=${arch} CGO_ENABLED=1 \
-      go build -o ${output_path} -ldflags "${ldflags}" .
+      go build -o ${output_path} -ldflags "${ldflags}" ./...
   fi
   
   echo "Build complete: ${output_path}"
@@ -110,13 +128,18 @@ build_for_arch() {
   # Check if the built file exists
   if [ ! -f "${output_path}" ]; then
     echo "ERROR: Build failed, output file ${output_path} not found."
+    
+    # Try to find what was actually built
+    echo "Searching for built executables in ${BUILD_DIR}:"
+    find ${BUILD_DIR} -type f -executable
+    
     return 1
   fi
   
   # Compress with UPX if available
   if command -v upx &> /dev/null; then
     echo "Compressing with UPX..."
-    upx -9 ${output_path}
+    upx -9 ${output_path} || echo "UPX compression failed, continuing without compression"
   fi
   
   # Copy extra files if specified

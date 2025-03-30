@@ -34,6 +34,14 @@ inputs:
     description: 'Repository to release to (format: owner/repo)'
     required: false
     default: ''
+  project_path:
+    description: 'Path to the project directory to build (relative to workspace root)'
+    required: false
+    default: '.'
+  pre_command:
+    description: 'Command to run before building (e.g., go mod init)'
+    required: false
+    default: ''
 
 outputs:
   release_asset_dir:
@@ -50,3 +58,5 @@ runs:
     INPUT_VERSION: ${{ inputs.version }}
     INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
     INPUT_RELEASE_REPO: ${{ inputs.release_repo }}
+    INPUT_PROJECT_PATH: ${{ inputs.project_path }}
+    INPUT_PRE_COMMAND: ${{ inputs.pre_command }}

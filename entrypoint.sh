@@ -52,6 +52,17 @@ if [ -n "$INPUT_GITHUB_TOKEN" ]; then
     echo "Using release tag as version: $VERSION"
   fi
   
+  # Handle project path and pre-command
+  if [ -n "$INPUT_PROJECT_PATH" ]; then
+    export PROJECT_PATH="$INPUT_PROJECT_PATH"
+    echo "Setting PROJECT_PATH=$PROJECT_PATH"
+  fi
+  
+  if [ -n "$INPUT_PRE_COMMAND" ]; then
+    export PRE_COMMAND="$INPUT_PRE_COMMAND"
+    echo "Setting PRE_COMMAND=$PRE_COMMAND"
+  fi
+  
   echo "Environment setup complete"
 fi
 
@@ -73,6 +84,18 @@ fi
 echo "Verifying Go installation:"
 which go || echo "ERROR: Go not found in PATH after setup!"
 go version || echo "ERROR: Go command failed after setup!"
+
+# Execute pre-command if provided
+if [ -n "$PRE_COMMAND" ]; then
+  echo "Executing pre-command: $PRE_COMMAND"
+  if [ -n "$PROJECT_PATH" ] && [ "$PROJECT_PATH" != "." ]; then
+    # Execute in the project directory
+    (cd "$PROJECT_PATH" && eval "$PRE_COMMAND")
+  else
+    # Execute in the current directory
+    eval "$PRE_COMMAND"
+  fi
+fi
 
 # Run release script
 if [ -f "/release.sh" ]; then
