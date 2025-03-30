@@ -21,6 +21,23 @@ export PATH=$PATH:/usr/local/go/bin
 export GOPATH=/go
 mkdir -p $GOPATH/src $GOPATH/bin $GOPATH/pkg
 
+# Add Go to global path
+echo "export PATH=\$PATH:/usr/local/go/bin" >> /etc/profile
+echo "export GOPATH=/go" >> /etc/profile
+echo "export PATH=\$PATH:\$GOPATH/bin" >> /etc/profile
+
+# Also add to .bashrc for non-login shells
+echo "export PATH=\$PATH:/usr/local/go/bin" >> /root/.bashrc
+echo "export GOPATH=/go" >> /root/.bashrc
+echo "export PATH=\$PATH:\$GOPATH/bin" >> /root/.bashrc
+
+# Add Go PATH to system-wide environment
+echo "/usr/local/go/bin" > /etc/paths.d/go
+
+# Create symlink for the go binary
+ln -sf /usr/local/go/bin/go /usr/local/bin/go
+ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
 # Verify installation
 go version
 
@@ -62,5 +79,13 @@ if [ "$TARGET_ARCH" = "arm64" ] && [ "$ARCH" != "arm64" ]; then
   PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig pkg-config --libs vips || \
     echo "WARNING: pkg-config failed to find libvips for ARM64."
 fi
+
+# Export PATH in a file that can be sourced by other scripts
+cat > /go.env << EOF
+export PATH=$PATH:/usr/local/go/bin
+export GOPATH=/go
+export PATH=$PATH:$GOPATH/bin
+export CGO_ENABLED=1
+EOF
 
 echo "Go setup complete!"

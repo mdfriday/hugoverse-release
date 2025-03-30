@@ -74,6 +74,11 @@ RUN mkdir -p /usr/lib/aarch64-linux-gnu/pkgconfig && \
 RUN echo '#!/bin/bash\n\
 # Cross-compilation script for ARM64 architecture\n\
 \n\
+# Ensure Go is available\n\
+if [ -f "/go.env" ]; then\n\
+  source /go.env\n\
+fi\n\
+\n\
 # Set basic environment variables for ARM64 cross-compilation\n\
 export CGO_ENABLED=1\n\
 export GOOS=linux\n\
@@ -90,6 +95,16 @@ export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig\n\
 export CGO_LDFLAGS="-L/usr/aarch64-linux-gnu/lib/"\n\
 export CGO_CFLAGS="-I/usr/include/aarch64-linux-gnu"\n\
 \n\
+# Make sure PATH includes Go binaries\n\
+export PATH=$PATH:/usr/local/go/bin:/go/bin:/usr/local/bin\n\
+\n\
+# Find Go binary\n\
+GO_BIN="go"\n\
+if [ "$1" = "go" ] || [[ "$1" == */go ]]; then\n\
+  GO_BIN="$1"\n\
+  shift\n\
+fi\n\
+\n\
 # Print environment for debugging\n\
 echo "=== ARM64 Build Environment ==="\n\
 echo "CC: $CC"\n\
@@ -97,11 +112,14 @@ echo "CXX: $CXX"\n\
 echo "GOOS: $GOOS"\n\
 echo "GOARCH: $GOARCH"\n\
 echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"\n\
+echo "PATH: $PATH"\n\
+echo "Go binary: $GO_BIN"\n\
+which $GO_BIN || echo "WARNING: Go not found in PATH!"\n\
 echo "==========================="\n\
 \n\
 # Execute the actual command\n\
-echo "Running command for ARM64: $@"\n\
-exec "$@"' > /usr/local/bin/build-arm64.sh && \
+echo "Running command for ARM64: $GO_BIN $@"\n\
+exec $GO_BIN "$@"' > /usr/local/bin/build-arm64.sh && \
     chmod +x /usr/local/bin/build-arm64.sh
 
 COPY *.sh /

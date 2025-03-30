@@ -4,8 +4,47 @@ set -e
 # Initialize variables
 PROJECT_NAME=${PROJECT_NAME:-hugoverse}
 VERSION=${VERSION:-$(date +%Y%m%d)}
-GITHUB_TOKEN=${GITHUB_TOKEN:-}
-GITHUB_REPO=${GITHUB_REPO:-}
+
+# GitHub token handling - support both direct env var and GitHub Actions input
+GITHUB_TOKEN=${GITHUB_TOKEN:-$INPUT_GITHUB_TOKEN}
+# Use GITHUB_REPOSITORY from GitHub Actions if available, otherwise use GITHUB_REPO
+GITHUB_REPO=${GITHUB_REPO:-$GITHUB_REPOSITORY}
+
+# Handle GitHub Actions input parameters
+GOOS=${GOOS:-$INPUT_GOOS}
+GOARCH=${GOARCH:-$INPUT_GOARCH}
+EXTRA_FILES=${EXTRA_FILES:-$INPUT_EXTRA_FILES}
+
+# Debug information
+echo "Environment variables:"
+echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+<set but hidden>}"
+echo "GITHUB_REPO: ${GITHUB_REPO}"
+echo "GOOS: ${GOOS}"
+echo "GOARCH: ${GOARCH}"
+echo "EXTRA_FILES: ${EXTRA_FILES}"
+
+# Make sure Go is in the PATH
+if [ ! -f "/usr/local/bin/go" ] && [ -f "/usr/local/go/bin/go" ]; then
+  export PATH=$PATH:/usr/local/go/bin
+  echo "Added Go to PATH: $(which go)"
+fi
+
+# Verify Go is available
+if ! command -v go &> /dev/null; then
+  echo "ERROR: Go command not found. Make sure Go is installed and in your PATH."
+  if [ -f "/go.env" ]; then
+    echo "Sourcing /go.env..."
+    source /go.env
+  fi
+  
+  # Second check after sourcing
+  if ! command -v go &> /dev/null; then
+    echo "ERROR: Go still not found after sourcing environment. Aborting."
+    exit 1
+  fi
+fi
+
+echo "Using Go version: $(go version)"
 
 # Host architecture information
 HOST_ARCH=$(dpkg --print-architecture)
@@ -27,8 +66,17 @@ build_for_arch() {
   if [ "$arch" = "arm64" ] && [ "$HOST_ARCH" != "arm64" ]; then
     echo "Using cross-compilation for ARM64..."
     
+    # Make sure build-arm64.sh is executable and exists
+    if [ ! -f "/usr/local/bin/build-arm64.sh" ]; then
+      echo "ERROR: build-arm64.sh not found!"
+      return 1
+    fi
+    
+    # Copy current Go environment to build-arm64.sh
+    PATH=$PATH:/usr/local/go/bin
+    
     # Use the build-arm64.sh script which sets all the necessary environment variables
-    /usr/local/bin/build-arm64.sh go build -o ${output_path} -ldflags "${ldflags}" .
+    /usr/local/bin/build-arm64.sh $(which go) build -o ${output_path} -ldflags "${ldflags}" .
     
     # Check if build was successful
     if [ $? -ne 0 ]; then
@@ -43,22 +91,45 @@ build_for_arch() {
   
   echo "Build complete: ${output_path}"
   
+  # Check if the built file exists
+  if [ ! -f "${output_path}" ]; then
+    echo "ERROR: Build failed, output file ${output_path} not found."
+    return 1
+  fi
+  
   # Compress with UPX if available
   if command -v upx &> /dev/null; then
     echo "Compressing with UPX..."
     upx -9 ${output_path}
   fi
   
+  # Copy extra files if specified
+  if [ -n "$EXTRA_FILES" ]; then
+    echo "Copying extra files to build directory: $EXTRA_FILES"
+    for file in $EXTRA_FILES; do
+      if [ -f "$file" ]; then
+        cp "$file" "${BUILD_DIR}/"
+        echo "Copied $file to ${BUILD_DIR}/"
+      else
+        echo "Warning: Extra file $file not found, skipping"
+      fi
+    done
+  fi
+  
   # Create ZIP archive
-  zip -j ${output_path}.zip ${output_path}
+  zip -j ${output_path}.zip ${output_path} ${BUILD_DIR}/LICENSE ${BUILD_DIR}/README.md ${BUILD_DIR}/manifest.json 2>/dev/null || zip -j ${output_path}.zip ${output_path}
   echo "Created archive: ${output_path}.zip"
   
   return 0
 }
 
 # Build for specified architectures
-if [ -n "$TARGET_ARCH" ]; then
-  # Build for specific target architecture
+if [ -n "$GOARCH" ]; then
+  # Build for specific target architecture from GitHub Actions
+  echo "Using architecture from GitHub Actions: $GOARCH"
+  build_for_arch "$GOARCH" || exit 1
+elif [ -n "$TARGET_ARCH" ]; then
+  # Build for specific target architecture from environment
   build_for_arch "$TARGET_ARCH" || exit 1
 else
   # Build for amd64 first
@@ -78,18 +149,23 @@ if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
   echo "Uploading artifacts to GitHub..."
   
   for artifact in ${BUILD_DIR}/${PROJECT_NAME}-linux-*.zip; do
-    echo "Uploading: $artifact"
-    github-assets-uploader \
-      -token ${GITHUB_TOKEN} \
-      -repo ${GITHUB_REPO} \
-      -tag ${VERSION} \
-      -file ${artifact} \
-      -name $(basename ${artifact})
+    if [ -f "$artifact" ]; then
+      echo "Uploading: $artifact"
+      github-assets-uploader \
+        -token ${GITHUB_TOKEN} \
+        -repo ${GITHUB_REPO} \
+        -tag ${VERSION} \
+        -file ${artifact} \
+        -name $(basename ${artifact})
+    else
+      echo "Warning: Artifact $artifact not found, skipping upload"
+    fi
   done
   
   echo "Upload complete!"
 else
   echo "Skipping GitHub upload: GITHUB_TOKEN or GITHUB_REPO not set"
+  echo "Note: In GitHub Actions, these are passed as INPUT_GITHUB_TOKEN and GITHUB_REPOSITORY"
 fi
 
 echo "Release process completed successfully!"

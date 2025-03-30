@@ -1,116 +1,35 @@
 # action.yml
-name: 'Hugoverse Release Binaries'
+name: 'HugoVerse Release Action'
 author: 'MDFriday <me@sunwei.xyz>'
-description: 'Build and Release Hugoverse Go Binaries to GitHub Release Assets'
+description: 'GitHub Action for building and releasing hugoverse with CGO and libvips support'
+branding:
+  icon: 'package'
+  color: 'blue'
+
 inputs:
   github_token:
-    description: 'GITHUB_TOKEN for uploading releases to Github asserts.'
+    description: 'GitHub token for uploading assets'
     required: true
-    default: ''
   goos:
-    description: 'GOOS is the running programs operating system target: one of darwin, freebsd, linux, and so on.'
-    required: true
-    default: ''
+    description: 'Target operating system for the build'
+    required: false
+    default: 'linux'
   goarch:
-    description: 'GOARCH is the running programs architecture target: one of 386, amd64, arm, s390x, loong64 and so on.'
-    required: true
-    default: ''
-  goamd64:
-    description: 'GOAMD64 is the running programs amd64 microarchitecture level: one of v1, v2, v3, v4.'
+    description: 'Target architecture for the build'
     required: false
-    default: ''
-  goarm:
-    description: 'GOARM is the running programs arm microarchitecture level: ARMv5,ARMv6,ARMv7'
-    required: false
-    default: ''    
-  gomips:
-    description: 'GOMIPS is the running programs mips microarchitecture level: hardfloat,softfloat'
-    required: false
-    default: ''    
-  goversion:
-    description: 'The `Go` compiler version.'
-    required: false
-    default: ''
-  build_flags:
-    description: 'Additional arguments to pass the go build command.'
-    required: false
-    default: ''
-  ldflags:
-    description: 'Values to provide to the -ldflags argument'
-    required: false
-    default: ''
-  project_path:
-    description: 'Where to run `go build .`'
-    required: false
-    default: '.'
-  binary_name:
-    description: 'Specify another binary name if do not want to use repository basename'
-    required: false
-    default: ''
-  pre_command:
-    description: 'Extra command that will be executed before `go build`, may for solving dependency'
-    required: false
-    default: ''
-  build_command:
-    description: 'The actual command to build binary, typically `go build`.'
-    required: false
-    default: 'go build'
-  executable_compression:
-    description: 'Compression executable binary by some third-party tools. Only `upx` is supported at the moment.'
-    required: false
-    default: ''
+    default: 'amd64'
   extra_files:
-    description: 'Extra files that will be packaged into artifacts either.'
+    description: 'Extra files to include in the release archive'
     required: false
-    default: ''
-  md5sum:
-    description: 'Publish `.md5` along with artifacts.'
-    required: false
-    default: 'TRUE'
-  sha256sum:
-    description: 'Publish `.sha256` along with artifacts.'
-    required: false
-    default: 'FALSE'
-  release_tag:
-    description: 'Upload binaries to specified release page that indicated by Git tag.'
-    required: false
-    default: ''
-  release_name:
-    description: 'Upload binaries to specified release page that indicated by release name.'
+    default: 'LICENSE README.md manifest.json'
+  version:
+    description: 'Version number for the release'
     required: false
     default: ''
   release_repo:
-    description: 'Repository to upload the binaries'
+    description: 'Repository to release to (format: owner/repo)'
     required: false
     default: ''
-  overwrite:
-    description: "Overwrite asset if it's already exist."
-    required: false
-    default: 'FALSE'
-  asset_name:
-    description: 'Customize asset name if do not want to use the default format.'
-    required: false
-    default: ''
-  retry:
-    description: 'How many times retrying if upload fails.'
-    required: false
-    default: '3'
-  post_command:
-    description: 'Extra command that will be executed for teardown work'
-    required: false
-    default: ''
-  compress_assets:
-    description: 'Compress assets before uploading'
-    required: false
-    default: 'TRUE'
-  upload:
-    description: 'Upload release assets or not'
-    required: false
-    default: 'TRUE'
-  multi_binaries:
-    description: 'Build and package multiple binaries together'
-    required: false
-    default: 'FALSE'
 
 outputs:
   release_asset_dir:
@@ -119,35 +38,10 @@ outputs:
 runs:
   using: 'docker'
   image: 'Dockerfile'
-  args:
-    - ${{ inputs.github_token }}
-    - ${{ inputs.goos }}
-    - ${{ inputs.goarch }}
-    - ${{ inputs.goamd64 }}
-    - ${{ inputs.goarm }}    
-    - ${{ inputs.gomips }}    
-    - ${{ inputs.goversion }}
-    - ${{ inputs.build_flags}}
-    - ${{ inputs.ldflags }}
-    - ${{ inputs.project_path }}
-    - ${{ inputs.binary_name }}
-    - ${{ inputs.pre_command }}
-    - ${{ inputs.build_command }}
-    - ${{ inputs.executable_compression }}
-    - ${{ inputs.extra_files }}
-    - ${{ inputs.md5sum }}
-    - ${{ inputs.sha256sum }}
-    - ${{ inputs.release_tag }}
-    - ${{ inputs.release_name }}
-    - ${{ inputs.release_repo }}
-    - ${{ inputs.overwrite }}
-    - ${{ inputs.asset_name }}
-    - ${{ inputs.retry }}
-    - ${{ inputs.post_command }}
-    - ${{ inputs.compress_assets }}
-    - ${{ inputs.upload }}
-    - ${{ inputs.multi_binaries }}
-
-branding:
-  icon: 'package'
-  color: 'blue'
+  env:
+    INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+    INPUT_GOOS: ${{ inputs.goos }}
+    INPUT_GOARCH: ${{ inputs.goarch }}
+    INPUT_EXTRA_FILES: ${{ inputs.extra_files }}
+    VERSION: ${{ inputs.version }}
+    GITHUB_REPO: ${{ inputs.release_repo }}
