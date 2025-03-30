@@ -289,35 +289,89 @@ fi
 
 # Upload to GitHub if token and repo are provided
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
-  echo "Uploading artifacts to GitHub repository: $GITHUB_REPO"
+  echo "Preparing to upload artifacts to GitHub repository: $GITHUB_REPO"
   
+  # First, check if the release exists
+  echo "Checking if release ${VERSION} exists..."
+  RELEASE_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: token ${GITHUB_TOKEN}" \
+    "https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${VERSION}")
+  
+  if [ "$RELEASE_EXISTS" = "404" ]; then
+    echo "Release ${VERSION} does not exist. Creating it now..."
+    RELEASE_DATA="{\"tag_name\":\"${VERSION}\",\"name\":\"${BINARY_NAME} ${VERSION}\",\"body\":\"Automated release of ${BINARY_NAME} ${VERSION}\",\"draft\":false,\"prerelease\":false}"
+    
+    RELEASE_RESPONSE=$(curl -s -X POST \
+      -H "Authorization: token ${GITHUB_TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d "${RELEASE_DATA}" \
+      "https://api.github.com/repos/${GITHUB_REPO}/releases")
+    
+    # Extract release ID from the response
+    RELEASE_ID=$(echo "$RELEASE_RESPONSE" | grep -o '"id": [0-9]*' | head -1 | grep -o '[0-9]*')
+    
+    if [ -z "$RELEASE_ID" ]; then
+      echo "Error creating release. Response: $RELEASE_RESPONSE"
+      echo "Skipping upload."
+      exit 1
+    else
+      echo "Created release with ID: $RELEASE_ID"
+    fi
+  else
+    echo "Release ${VERSION} already exists. Continuing with upload..."
+    # Get the release ID
+    RELEASE_INFO=$(curl -s \
+      -H "Authorization: token ${GITHUB_TOKEN}" \
+      "https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${VERSION}")
+    
+    RELEASE_ID=$(echo "$RELEASE_INFO" | grep -o '"id": [0-9]*' | head -1 | grep -o '[0-9]*')
+    
+    if [ -z "$RELEASE_ID" ]; then
+      echo "Error getting release ID. Response: $RELEASE_INFO"
+      echo "Skipping upload."
+      exit 1
+    else
+      echo "Found release with ID: $RELEASE_ID"
+    fi
+  fi
+  
+  # Now upload each artifact
   for artifact in ${BUILD_DIR}/${BINARY_NAME}-linux-*.zip; do
     if [ -f "$artifact" ]; then
       echo "Uploading: $artifact"
-      # Note the use of -f instead of -file
-      github-assets-uploader \
-        -token ${GITHUB_TOKEN} \
-        -repo ${GITHUB_REPO} \
-        -tag ${VERSION} \
-        -f ${artifact} \
-        -mediatype "application/zip"
+      ASSET_NAME=$(basename ${artifact})
       
-      if [ $? -ne 0 ]; then
-        echo "Upload failed. Trying alternative command format..."
+      # Use curl directly to upload the asset
+      UPLOAD_URL="https://uploads.github.com/repos/${GITHUB_REPO}/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}"
+      echo "Upload URL: $UPLOAD_URL"
+      
+      UPLOAD_RESPONSE=$(curl -s -X POST \
+        -H "Authorization: token ${GITHUB_TOKEN}" \
+        -H "Content-Type: application/zip" \
+        --data-binary @"${artifact}" \
+        "${UPLOAD_URL}")
+      
+      if echo "$UPLOAD_RESPONSE" | grep -q '"state":"uploaded"'; then
+        echo "Upload successful!"
+      else
+        echo "Upload failed. Response: $UPLOAD_RESPONSE"
+        echo "Trying with github-assets-uploader as fallback..."
+        
+        # Fallback to github-assets-uploader
         github-assets-uploader \
           -logtostderr \
           -repo ${GITHUB_REPO} \
           -token ${GITHUB_TOKEN} \
           -tag ${VERSION} \
           -f ${artifact} \
-          -mediatype "application/zip"
+          -mediatype "application/zip" || echo "Fallback upload failed too."
       fi
     else
       echo "Warning: Artifact $artifact not found, skipping upload"
     fi
   done
   
-  echo "Upload complete!"
+  echo "Upload process complete!"
 else
   echo "Skipping GitHub upload: GITHUB_TOKEN or GITHUB_REPO not set"
   echo "GITHUB_TOKEN source could be: GITHUB_TOKEN, INPUT_GITHUB_TOKEN, or REGISTRY_TOKEN"
