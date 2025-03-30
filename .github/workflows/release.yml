@@ -35,7 +35,7 @@ jobs:
     - name: Build & Publish to Github Container Registry
       uses: elgohr/Publish-Docker-Github-Action@v5
       with:
-        name: ${{ github.actor }}/${{ env.DOCKER_REPO_NAME }}
+        name: mdfriday/${{ env.DOCKER_REPO_NAME }}
         username: ${{ github.actor }}
         password: ${{ secrets.REGISTRY_TOKEN }}
         platforms: linux/amd64,linux/arm64
