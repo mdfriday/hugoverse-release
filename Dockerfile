@@ -34,6 +34,25 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && DEBIAN_FRONTEND=noninteract
   g++-aarch64-linux-gnu \
   && rm -rf /var/lib/apt/lists/*
 
+# Add ARM64 architecture and install ARM64 libraries for cross-compilation
+RUN dpkg --add-architecture arm64 && \
+    echo "deb [arch=arm64] http://deb.debian.org/debian buster main" >> /etc/apt/sources.list && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+    libvips-dev:arm64 \
+    libglib2.0-dev:arm64 \
+    libjpeg-dev:arm64 \
+    libpng-dev:arm64 \
+    libwebp-dev:arm64 \
+    libgif-dev:arm64 \
+    libtiff-dev:arm64 \
+    libexif-dev:arm64 \
+    libgsf-1-dev:arm64 \
+    liblcms2-dev:arm64 \
+    libheif-dev:arm64 \
+    liborc-0.4-dev:arm64 \
+    && rm -rf /var/lib/apt/lists/*
+
 # install latest upx by wget instead of `apt install upx-ucl`
 RUN export arch=$(dpkg --print-architecture) || arch=${TARGETARCH} && \
   wget --no-check-certificate --progress=dot:mega https://github.com/upx/upx/releases/download/v${UPX_VER}/upx-${UPX_VER}-${arch}_linux.tar.xz && \
@@ -55,20 +74,18 @@ ENV CGO_ENABLED=1
 
 # Configure pkg-config to find arm64 libraries
 RUN mkdir -p /usr/lib/aarch64-linux-gnu/pkgconfig && \
-    echo "Creating custom vips.pc for ARM64 cross-compilation" && \
-    echo "prefix=/usr" > /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "exec_prefix=\${prefix}" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "libdir=\${prefix}/lib/aarch64-linux-gnu" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "includedir=\${prefix}/include" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "Name: vips" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "Description: Image processing library" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "Version: 8.7.4" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "Requires: glib-2.0 >= 2.40.0 gobject-2.0 >= 2.40.0 gmodule-2.0 >= 2.40.0 gio-2.0 >= 2.40.0" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "Requires.private: libgsf-1 >= 1.14.26 fftw3 >= 3.1.0 lcms2 >= 2.0.0 libexif >= 0.6" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "Libs: -L\${libdir} -lvips -lm" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "Libs.private: -lm -lz" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
-    echo "Cflags: -I\${includedir}" >> /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc
+    ln -sf /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc /usr/lib/aarch64-linux-gnu/pkgconfig/vips.pc && \
+    ln -sf /usr/lib/aarch64-linux-gnu/pkgconfig/glib-2.0.pc /usr/lib/aarch64-linux-gnu/pkgconfig/glib-2.0.pc && \
+    ln -sf /usr/lib/aarch64-linux-gnu/pkgconfig/gobject-2.0.pc /usr/lib/aarch64-linux-gnu/pkgconfig/gobject-2.0.pc && \
+    ln -sf /usr/lib/aarch64-linux-gnu/pkgconfig/gmodule-2.0.pc /usr/lib/aarch64-linux-gnu/pkgconfig/gmodule-2.0.pc && \
+    ln -sf /usr/lib/aarch64-linux-gnu/pkgconfig/gio-2.0.pc /usr/lib/aarch64-linux-gnu/pkgconfig/gio-2.0.pc
+
+# Fix missing library links for ARM64 cross-compilation
+RUN ln -sf /usr/lib/aarch64-linux-gnu/libvips.so /usr/aarch64-linux-gnu/lib/libvips.so && \
+    ln -sf /usr/lib/aarch64-linux-gnu/libglib-2.0.so /usr/aarch64-linux-gnu/lib/libglib-2.0.so && \
+    ln -sf /usr/lib/aarch64-linux-gnu/libgobject-2.0.so /usr/aarch64-linux-gnu/lib/libgobject-2.0.so && \
+    ln -sf /usr/lib/aarch64-linux-gnu/libgmodule-2.0.so /usr/aarch64-linux-gnu/lib/libgmodule-2.0.so && \
+    ln -sf /usr/lib/aarch64-linux-gnu/libgio-2.0.so /usr/aarch64-linux-gnu/lib/libgio-2.0.so
 
 # Configure cross-compilation environment for ARM64
 RUN echo '#!/bin/bash\n\
@@ -92,7 +109,7 @@ export CXX=aarch64-linux-gnu-g++\n\
 export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig\n\
 \n\
 # Set additional environment variables to help with linking\n\
-export CGO_LDFLAGS="-L/usr/aarch64-linux-gnu/lib/"\n\
+export CGO_LDFLAGS="-L/usr/lib/aarch64-linux-gnu/ -L/usr/aarch64-linux-gnu/lib/"\n\
 export CGO_CFLAGS="-I/usr/include/aarch64-linux-gnu"\n\
 \n\
 # Make sure PATH includes Go binaries\n\
