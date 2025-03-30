@@ -81,6 +81,93 @@ HOST_ARCH=$(dpkg --print-architecture)
 
 echo "Starting release process for ${PROJECT_NAME} v${VERSION}"
 
+# Function to build for a specific architecture
+build_for_arch() {
+  local arch=$1
+  local proj_path=$2
+  local bin_name=$3
+  local output_name="${bin_name}-linux-${arch}"
+  local output_path="${BUILD_DIR}/${output_name}"
+  local ldflags="-s -w -X main.Version=${VERSION}"
+  
+  echo "Building for ${arch} architecture from ${proj_path}..."
+  
+  # Save current directory and change to project path
+  local current_dir=$(pwd)
+  cd "${proj_path}"
+  
+  # Set up architecture-specific environment
+  if [ "$arch" = "arm64" ] && [ "$HOST_ARCH" != "arm64" ]; then
+    echo "Using cross-compilation for ARM64..."
+    
+    # Make sure build-arm64.sh is executable and exists
+    if [ ! -f "/usr/local/bin/build-arm64.sh" ]; then
+      echo "ERROR: build-arm64.sh not found!"
+      cd "$current_dir"
+      return 1
+    fi
+    
+    # Copy current Go environment to build-arm64.sh
+    PATH=$PATH:/usr/local/go/bin
+    
+    # Use the build-arm64.sh script which sets all the necessary environment variables
+    /usr/local/bin/build-arm64.sh $(which go) build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
+    
+    # Check if build was successful
+    if [ $? -ne 0 ]; then
+      echo "ARM64 build failed. Check cross-compilation setup and dependencies."
+      cd "$current_dir"
+      return 1
+    fi
+  else
+    # Build for the host architecture
+    echo "Running: GOOS=linux GOARCH=${arch} CGO_ENABLED=1 go build -buildvcs=false -o ${output_path} -ldflags \"${ldflags}\" ."
+    GOOS=linux GOARCH=${arch} CGO_ENABLED=1 \
+      go build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
+  fi
+  
+  # Restore original directory
+  cd "$current_dir"
+  
+  echo "Build complete: ${output_path}"
+  
+  # Check if the built file exists
+  if [ ! -f "${output_path}" ]; then
+    echo "ERROR: Build failed, output file ${output_path} not found."
+    
+    # Try to find what was actually built
+    echo "Searching for built executables in ${BUILD_DIR}:"
+    find ${BUILD_DIR} -type f -executable || echo "No executables found"
+    
+    return 1
+  fi
+  
+  # Compress with UPX if available
+  if command -v upx &> /dev/null; then
+    echo "Compressing with UPX..."
+    upx -9 ${output_path} || echo "UPX compression failed, continuing without compression"
+  fi
+  
+  # Copy extra files if specified
+  if [ -n "$EXTRA_FILES" ]; then
+    echo "Copying extra files to build directory: $EXTRA_FILES"
+    for file in $EXTRA_FILES; do
+      if [ -f "$file" ]; then
+        cp "$file" "${BUILD_DIR}/"
+        echo "Copied $file to ${BUILD_DIR}/"
+      else
+        echo "Warning: Extra file $file not found, skipping"
+      fi
+    done
+  fi
+  
+  # Create ZIP archive
+  (cd ${BUILD_DIR} && zip -j ${output_name}.zip ${output_name} $(for file in $EXTRA_FILES; do if [ -f "${BUILD_DIR}/$(basename $file)" ]; then echo "$(basename $file)"; fi; done))
+  echo "Created archive: ${BUILD_DIR}/${output_name}.zip"
+  
+  return 0
+}
+
 # Check if this is a multi-binary build
 if [[ "$PROJECT_PATH" == *" "* ]]; then
   echo "Multi-binary build detected!"
@@ -296,93 +383,6 @@ else
     fi
   fi
 fi
-
-# Function to build for a specific architecture
-build_for_arch() {
-  local arch=$1
-  local proj_path=$2
-  local bin_name=$3
-  local output_name="${bin_name}-linux-${arch}"
-  local output_path="${BUILD_DIR}/${output_name}"
-  local ldflags="-s -w -X main.Version=${VERSION}"
-  
-  echo "Building for ${arch} architecture from ${proj_path}..."
-  
-  # Save current directory and change to project path
-  local current_dir=$(pwd)
-  cd "${proj_path}"
-  
-  # Set up architecture-specific environment
-  if [ "$arch" = "arm64" ] && [ "$HOST_ARCH" != "arm64" ]; then
-    echo "Using cross-compilation for ARM64..."
-    
-    # Make sure build-arm64.sh is executable and exists
-    if [ ! -f "/usr/local/bin/build-arm64.sh" ]; then
-      echo "ERROR: build-arm64.sh not found!"
-      cd "$current_dir"
-      return 1
-    fi
-    
-    # Copy current Go environment to build-arm64.sh
-    PATH=$PATH:/usr/local/go/bin
-    
-    # Use the build-arm64.sh script which sets all the necessary environment variables
-    /usr/local/bin/build-arm64.sh $(which go) build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
-    
-    # Check if build was successful
-    if [ $? -ne 0 ]; then
-      echo "ARM64 build failed. Check cross-compilation setup and dependencies."
-      cd "$current_dir"
-      return 1
-    fi
-  else
-    # Build for the host architecture
-    echo "Running: GOOS=linux GOARCH=${arch} CGO_ENABLED=1 go build -buildvcs=false -o ${output_path} -ldflags \"${ldflags}\" ."
-    GOOS=linux GOARCH=${arch} CGO_ENABLED=1 \
-      go build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
-  fi
-  
-  # Restore original directory
-  cd "$current_dir"
-  
-  echo "Build complete: ${output_path}"
-  
-  # Check if the built file exists
-  if [ ! -f "${output_path}" ]; then
-    echo "ERROR: Build failed, output file ${output_path} not found."
-    
-    # Try to find what was actually built
-    echo "Searching for built executables in ${BUILD_DIR}:"
-    find ${BUILD_DIR} -type f -executable || echo "No executables found"
-    
-    return 1
-  fi
-  
-  # Compress with UPX if available
-  if command -v upx &> /dev/null; then
-    echo "Compressing with UPX..."
-    upx -9 ${output_path} || echo "UPX compression failed, continuing without compression"
-  fi
-  
-  # Copy extra files if specified
-  if [ -n "$EXTRA_FILES" ]; then
-    echo "Copying extra files to build directory: $EXTRA_FILES"
-    for file in $EXTRA_FILES; do
-      if [ -f "$file" ]; then
-        cp "$file" "${BUILD_DIR}/"
-        echo "Copied $file to ${BUILD_DIR}/"
-      else
-        echo "Warning: Extra file $file not found, skipping"
-      fi
-    done
-  fi
-  
-  # Create ZIP archive
-  (cd ${BUILD_DIR} && zip -j ${output_name}.zip ${output_name} $(for file in $EXTRA_FILES; do if [ -f "${BUILD_DIR}/$(basename $file)" ]; then echo "$(basename $file)"; fi; done))
-  echo "Created archive: ${BUILD_DIR}/${output_name}.zip"
-  
-  return 0
-}
 
 # Upload to GitHub if token and repo are provided
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
