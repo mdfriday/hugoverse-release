@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, windows, darwin]
+        goos: [linux]
         goarch: [amd64, arm64, arm]
         exclude:
           - goarch: arm64
@@ -180,7 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, windows, darwin]
+        goos: [linux]
         goarch: [amd64]
         compress_assets: ['auto', 'true', 'zip', 'off', 'false']
     steps:
@@ -205,7 +205,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, windows, darwin]
+        goos: [linux]
         goarch: [amd64]
         project_path: [./test/multi-binaries/..., './test/multi-binaries/cmd1 ./test/multi-binaries/cmd2']
     steps:
