@@ -81,56 +81,65 @@ HOST_ARCH=$(dpkg --print-architecture)
 
 echo "Starting release process for ${PROJECT_NAME} v${VERSION}"
 
-# Check if the project path exists
-if [ ! -d "${PROJECT_PATH}" ]; then
-  echo "ERROR: Project path ${PROJECT_PATH} does not exist or is not a directory."
-  mkdir -p ${PROJECT_PATH}
-  echo "Created directory ${PROJECT_PATH}"
+# Check if this is a multi-binary build
+if [[ "$PROJECT_PATH" == *" "* ]]; then
+  echo "Multi-binary build detected!"
+  MULTI_BINARY=true
+  
+  # Split project path into array
+  IFS=' ' read -r -a PROJECT_PATHS <<< "$PROJECT_PATH"
+  
+  # Create a temporary directory for the build
+  BUILD_WORKSPACE=$(mktemp -d)
+  echo "Created temporary workspace: $BUILD_WORKSPACE"
+else
+  MULTI_BINARY=false
+  
+  # Check if the project path exists
+  if [ ! -d "${PROJECT_PATH}" ]; then
+    echo "Creating project directory: ${PROJECT_PATH}"
+    mkdir -p "${PROJECT_PATH}"
+  fi
+  
+  # Change to the project directory
+  cd "${PROJECT_PATH}"
+  echo "Current directory: $(pwd)"
 fi
 
-# Change to the project directory
-cd ${PROJECT_PATH}
-echo "Current directory: $(pwd)"
-
-# Check if we need to initialize a Go module
-if ! [ -f "go.mod" ]; then
-  echo "No go.mod file found. Initializing Go module..."
-  go mod init "${BINARY_NAME}" || echo "Failed to initialize Go module, but continuing anyway"
-fi
-
-# Make sure all dependencies are downloaded
-if [ -f "go.mod" ]; then
-  echo "Downloading dependencies..."
-  go mod tidy || echo "go mod tidy failed, but continuing anyway"
-  go mod download || echo "go mod download failed, but continuing anyway"
-fi
-
-# Create a simple main.go file if it doesn't exist
-if ! [ -f "main.go" ] && ! ls *.go 1> /dev/null 2>&1; then
-  echo "No Go files found. Creating a simple main.go file..."
-  cat > main.go << EOF
-package main
-
-import (
-	"fmt"
-	"os"
-	"runtime"
-)
-
-var Version = "dev"
-
-func main() {
-	fmt.Printf("${BINARY_NAME} version %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
-	os.Exit(0)
+# Function to set up a Go module
+setup_go_module() {
+  local dir=$1
+  local mod_name=$2
+  
+  if [ -d "$dir" ]; then
+    cd "$dir"
+    
+    if ! [ -f "go.mod" ]; then
+      echo "No go.mod file found in $dir. Initializing Go module..."
+      go mod init "${mod_name}" || echo "Failed to initialize Go module, but continuing anyway"
+    fi
+    
+    # Make sure all dependencies are downloaded
+    if [ -f "go.mod" ]; then
+      echo "Downloading dependencies for $dir..."
+      go mod tidy || echo "go mod tidy failed, but continuing anyway"
+      go mod download || echo "go mod download failed, but continuing anyway"
+    fi
+  else
+    echo "Directory $dir does not exist, skipping Go module setup"
+  fi
 }
-EOF
-  echo "Created main.go"
-fi
 
 # Create default files if they don't exist but are in EXTRA_FILES
-if [[ "$EXTRA_FILES" == *"LICENSE"* ]] && [ ! -f "LICENSE" ]; then
-  echo "Creating default LICENSE file..."
-  cat > LICENSE << EOF
+create_extra_files() {
+  local dir=$1
+  
+  if [ -d "$dir" ]; then
+    cd "$dir"
+    
+    if [[ "$EXTRA_FILES" == *"LICENSE"* ]] && [ ! -f "LICENSE" ]; then
+      echo "Creating default LICENSE file in $dir..."
+      cat > LICENSE << EOF
 MIT License
 
 Copyright (c) $(date +%Y) MDFriday
@@ -153,12 +162,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 EOF
-  echo "Created LICENSE file"
-fi
+      echo "Created LICENSE file"
+    fi
 
-if [[ "$EXTRA_FILES" == *"README.md"* ]] && [ ! -f "README.md" ]; then
-  echo "Creating default README.md file..."
-  cat > README.md << EOF
+    if [[ "$EXTRA_FILES" == *"README.md"* ]] && [ ! -f "README.md" ]; then
+      echo "Creating default README.md file in $dir..."
+      cat > README.md << EOF
 # ${BINARY_NAME}
 
 This is an auto-generated README file for ${BINARY_NAME}.
@@ -173,12 +182,12 @@ This is an auto-generated README file for ${BINARY_NAME}.
 
 See the LICENSE file for details.
 EOF
-  echo "Created README.md file"
-fi
+      echo "Created README.md file"
+    fi
 
-if [[ "$EXTRA_FILES" == *"manifest.json"* ]] && [ ! -f "manifest.json" ]; then
-  echo "Creating default manifest.json file..."
-  cat > manifest.json << EOF
+    if [[ "$EXTRA_FILES" == *"manifest.json"* ]] && [ ! -f "manifest.json" ]; then
+      echo "Creating default manifest.json file in $dir..."
+      cat > manifest.json << EOF
 {
   "name": "${BINARY_NAME}",
   "version": "${VERSION}",
@@ -187,17 +196,121 @@ if [[ "$EXTRA_FILES" == *"manifest.json"* ]] && [ ! -f "manifest.json" ]; then
   "os": "${GOOS}"
 }
 EOF
-  echo "Created manifest.json file"
+      echo "Created manifest.json file"
+    fi
+  else
+    echo "Directory $dir does not exist, skipping extra files creation"
+  fi
+}
+
+# Create a simple main.go file if it doesn't exist
+create_main_go() {
+  local dir=$1
+  local binary=$2
+  
+  if [ -d "$dir" ]; then
+    cd "$dir"
+    
+    if ! [ -f "main.go" ] && ! ls *.go 1> /dev/null 2>&1; then
+      echo "No Go files found in $dir. Creating a simple main.go file..."
+      cat > main.go << EOF
+package main
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+)
+
+var Version = "dev"
+
+func main() {
+	fmt.Printf("${binary} version %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
+	os.Exit(0)
+}
+EOF
+      echo "Created main.go in $dir"
+    fi
+  else
+    echo "Directory $dir does not exist, skipping main.go creation"
+  fi
+}
+
+# Handle multi-binary builds
+if [ "$MULTI_BINARY" = true ]; then
+  echo "Setting up multiple binary builds..."
+  
+  # Create build directory for each binary
+  for i in "${!PROJECT_PATHS[@]}"; do
+    path="${PROJECT_PATHS[$i]}"
+    # Derive binary name from directory if not specified
+    if [ "$BINARY_NAME" = "$PROJECT_NAME" ]; then
+      binary_name=$(basename "$path")
+    else
+      binary_name="${BINARY_NAME}-$(basename "$path")"
+    fi
+    
+    echo "Setting up build for $binary_name from $path"
+    
+    # Create directory if it doesn't exist
+    if [ ! -d "$path" ]; then
+      echo "Creating directory: $path"
+      mkdir -p "$path"
+    fi
+    
+    # Setup Go module and create necessary files
+    setup_go_module "$path" "$binary_name"
+    create_extra_files "$path"
+    create_main_go "$path" "$binary_name"
+    
+    # Build the binary
+    build_for_arch "$GOARCH" "$path" "$binary_name" || {
+      echo "Failed to build $binary_name from $path"
+      continue
+    }
+  done
+else
+  # Handle single binary build
+  setup_go_module "$PROJECT_PATH" "$BINARY_NAME"
+  create_extra_files "$PROJECT_PATH"
+  create_main_go "$PROJECT_PATH" "$BINARY_NAME"
+  
+  # Build for specified architectures
+  if [ -n "$GOARCH" ]; then
+    # Build for specific target architecture from GitHub Actions
+    echo "Using architecture from GitHub Actions: $GOARCH"
+    build_for_arch "$GOARCH" "$PROJECT_PATH" "$BINARY_NAME" || exit 1
+  elif [ -n "$TARGET_ARCH" ]; then
+    # Build for specific target architecture from environment
+    build_for_arch "$TARGET_ARCH" "$PROJECT_PATH" "$BINARY_NAME" || exit 1
+  else
+    # Build for amd64 first
+    build_for_arch "amd64" "$PROJECT_PATH" "$BINARY_NAME" || exit 1
+    
+    # Try building for arm64 if amd64 succeeded
+    echo "Attempting ARM64 build..."
+    if build_for_arch "arm64" "$PROJECT_PATH" "$BINARY_NAME"; then
+      echo "ARM64 build successful"
+    else
+      echo "ARM64 build failed, but amd64 build was successful. Continuing..."
+    fi
+  fi
 fi
 
 # Function to build for a specific architecture
 build_for_arch() {
   local arch=$1
-  local output_name="${BINARY_NAME}-linux-${arch}"
+  local proj_path=$2
+  local bin_name=$3
+  local output_name="${bin_name}-linux-${arch}"
   local output_path="${BUILD_DIR}/${output_name}"
   local ldflags="-s -w -X main.Version=${VERSION}"
   
-  echo "Building for ${arch} architecture..."
+  echo "Building for ${arch} architecture from ${proj_path}..."
+  
+  # Save current directory and change to project path
+  local current_dir=$(pwd)
+  cd "${proj_path}"
   
   # Set up architecture-specific environment
   if [ "$arch" = "arm64" ] && [ "$HOST_ARCH" != "arm64" ]; then
@@ -206,6 +319,7 @@ build_for_arch() {
     # Make sure build-arm64.sh is executable and exists
     if [ ! -f "/usr/local/bin/build-arm64.sh" ]; then
       echo "ERROR: build-arm64.sh not found!"
+      cd "$current_dir"
       return 1
     fi
     
@@ -218,6 +332,7 @@ build_for_arch() {
     # Check if build was successful
     if [ $? -ne 0 ]; then
       echo "ARM64 build failed. Check cross-compilation setup and dependencies."
+      cd "$current_dir"
       return 1
     fi
   else
@@ -226,6 +341,9 @@ build_for_arch() {
     GOOS=linux GOARCH=${arch} CGO_ENABLED=1 \
       go build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
   fi
+  
+  # Restore original directory
+  cd "$current_dir"
   
   echo "Build complete: ${output_path}"
   
@@ -265,27 +383,6 @@ build_for_arch() {
   
   return 0
 }
-
-# Build for specified architectures
-if [ -n "$GOARCH" ]; then
-  # Build for specific target architecture from GitHub Actions
-  echo "Using architecture from GitHub Actions: $GOARCH"
-  build_for_arch "$GOARCH" || exit 1
-elif [ -n "$TARGET_ARCH" ]; then
-  # Build for specific target architecture from environment
-  build_for_arch "$TARGET_ARCH" || exit 1
-else
-  # Build for amd64 first
-  build_for_arch "amd64" || exit 1
-  
-  # Try building for arm64 if amd64 succeeded
-  echo "Attempting ARM64 build..."
-  if build_for_arch "arm64"; then
-    echo "ARM64 build successful"
-  else
-    echo "ARM64 build failed, but amd64 build was successful. Continuing..."
-  fi
-fi
 
 # Upload to GitHub if token and repo are provided
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
@@ -336,7 +433,7 @@ if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
   fi
   
   # Now upload each artifact
-  for artifact in ${BUILD_DIR}/${BINARY_NAME}-linux-*.zip; do
+  for artifact in ${BUILD_DIR}/*-linux-*.zip; do
     if [ -f "$artifact" ]; then
       echo "Uploading: $artifact"
       ASSET_NAME=$(basename ${artifact})
