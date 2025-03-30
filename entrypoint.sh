@@ -6,20 +6,52 @@ echo "Starting hugoverse build process..."
 echo "Architecture: $(uname -m)"
 echo "Host architecture: $(dpkg --print-architecture)"
 
+# Print all environment variables starting with INPUT_ for debugging
+echo "GitHub Actions input parameters:"
+env | grep "^INPUT_" || echo "No INPUT_ variables found"
+
 # Convert GitHub Actions input variables to environment variables
 if [ -n "$INPUT_GITHUB_TOKEN" ]; then
   echo "GitHub Actions detected, setting up environment variables..."
   export GITHUB_TOKEN="$INPUT_GITHUB_TOKEN"
-  # Other potential Action inputs
+  
+  # Operating system and architecture
   if [ -n "$INPUT_GOOS" ]; then
     export GOOS="$INPUT_GOOS"
+    echo "Setting GOOS=$GOOS"
   fi
+  
   if [ -n "$INPUT_GOARCH" ]; then
     export GOARCH="$INPUT_GOARCH"
+    export TARGET_ARCH="$INPUT_GOARCH"
+    echo "Setting GOARCH=$GOARCH"
   fi
+  
+  # Handle extra files and release information
   if [ -n "$INPUT_EXTRA_FILES" ]; then
     export EXTRA_FILES="$INPUT_EXTRA_FILES"
+    echo "Setting EXTRA_FILES=$EXTRA_FILES"
   fi
+  
+  if [ -n "$INPUT_VERSION" ]; then
+    export VERSION="$INPUT_VERSION"
+    echo "Setting VERSION=$VERSION"
+  fi
+  
+  if [ -n "$INPUT_RELEASE_REPO" ]; then
+    export GITHUB_REPO="$INPUT_RELEASE_REPO"
+    echo "Setting GITHUB_REPO=$GITHUB_REPO"
+  elif [ -n "$GITHUB_REPOSITORY" ]; then
+    export GITHUB_REPO="$GITHUB_REPOSITORY"
+    echo "Using GITHUB_REPOSITORY: $GITHUB_REPO"
+  fi
+  
+  # Handle release tag if specified
+  if [ -n "$INPUT_RELEASE_TAG" ]; then
+    export VERSION="$INPUT_RELEASE_TAG"
+    echo "Using release tag as version: $VERSION"
+  fi
+  
   echo "Environment setup complete"
 fi
 

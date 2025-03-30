@@ -26,6 +26,10 @@ inputs:
     description: 'Version number for the release'
     required: false
     default: ''
+  release_tag:
+    description: 'Git tag to use for the release (overrides version)'
+    required: false
+    default: ''
   release_repo:
     description: 'Repository to release to (format: owner/repo)'
     required: false
@@ -43,5 +47,6 @@ runs:
     INPUT_GOOS: ${{ inputs.goos }}
     INPUT_GOARCH: ${{ inputs.goarch }}
     INPUT_EXTRA_FILES: ${{ inputs.extra_files }}
-    VERSION: ${{ inputs.version }}
-    GITHUB_REPO: ${{ inputs.release_repo }}
+    INPUT_VERSION: ${{ inputs.version }}
+    INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+    INPUT_RELEASE_REPO: ${{ inputs.release_repo }}

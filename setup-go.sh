@@ -21,20 +21,16 @@ export PATH=$PATH:/usr/local/go/bin
 export GOPATH=/go
 mkdir -p $GOPATH/src $GOPATH/bin $GOPATH/pkg
 
-# Add Go to global path
-echo "export PATH=\$PATH:/usr/local/go/bin" >> /etc/profile
-echo "export GOPATH=/go" >> /etc/profile
-echo "export PATH=\$PATH:\$GOPATH/bin" >> /etc/profile
+# Add Go to global path for all users
+echo "export PATH=\$PATH:/usr/local/go/bin:/go/bin" > /etc/profile.d/go.sh
+chmod +x /etc/profile.d/go.sh
 
 # Also add to .bashrc for non-login shells
 echo "export PATH=\$PATH:/usr/local/go/bin" >> /root/.bashrc
 echo "export GOPATH=/go" >> /root/.bashrc
 echo "export PATH=\$PATH:\$GOPATH/bin" >> /root/.bashrc
 
-# Add Go PATH to system-wide environment
-echo "/usr/local/go/bin" > /etc/paths.d/go
-
-# Create symlink for the go binary
+# Create symlink for the go binary in a standard location
 ln -sf /usr/local/go/bin/go /usr/local/bin/go
 ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 

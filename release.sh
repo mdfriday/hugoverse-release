@@ -5,10 +5,25 @@ set -e
 PROJECT_NAME=${PROJECT_NAME:-hugoverse}
 VERSION=${VERSION:-$(date +%Y%m%d)}
 
-# GitHub token handling - support both direct env var and GitHub Actions input
+# GitHub token handling - support multiple ways of passing the token
+# Order of precedence: GITHUB_TOKEN -> INPUT_GITHUB_TOKEN -> REGISTRY_TOKEN
 GITHUB_TOKEN=${GITHUB_TOKEN:-$INPUT_GITHUB_TOKEN}
-# Use GITHUB_REPOSITORY from GitHub Actions if available, otherwise use GITHUB_REPO
+GITHUB_TOKEN=${GITHUB_TOKEN:-$REGISTRY_TOKEN}
+
+# Repository handling - support multiple ways of passing the repository
+# Order of precedence: GITHUB_REPO -> INPUT_RELEASE_REPO -> GITHUB_REPOSITORY
+GITHUB_REPO=${GITHUB_REPO:-$INPUT_RELEASE_REPO}
 GITHUB_REPO=${GITHUB_REPO:-$GITHUB_REPOSITORY}
+
+# Release tag handling
+if [ -n "$INPUT_RELEASE_TAG" ]; then
+  VERSION=$INPUT_RELEASE_TAG
+  echo "Using release tag from GitHub Actions: $VERSION"
+elif [ -n "$GITHUB_REF" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
+  # Extract tag from GITHUB_REF if it's a tag reference
+  VERSION=${GITHUB_REF#refs/tags/}
+  echo "Using version from GITHUB_REF tag: $VERSION"
+fi
 
 # Handle GitHub Actions input parameters
 GOOS=${GOOS:-$INPUT_GOOS}
@@ -19,6 +34,7 @@ EXTRA_FILES=${EXTRA_FILES:-$INPUT_EXTRA_FILES}
 echo "Environment variables:"
 echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+<set but hidden>}"
 echo "GITHUB_REPO: ${GITHUB_REPO}"
+echo "VERSION: ${VERSION}"
 echo "GOOS: ${GOOS}"
 echo "GOARCH: ${GOARCH}"
 echo "EXTRA_FILES: ${EXTRA_FILES}"
@@ -146,7 +162,7 @@ fi
 
 # Upload to GitHub if token and repo are provided
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
-  echo "Uploading artifacts to GitHub..."
+  echo "Uploading artifacts to GitHub repository: $GITHUB_REPO"
   
   for artifact in ${BUILD_DIR}/${PROJECT_NAME}-linux-*.zip; do
     if [ -f "$artifact" ]; then
@@ -165,7 +181,15 @@ if [ -n "$GITHUB_TOKEN" ] && [ -n "$GITHUB_REPO" ]; then
   echo "Upload complete!"
 else
   echo "Skipping GitHub upload: GITHUB_TOKEN or GITHUB_REPO not set"
-  echo "Note: In GitHub Actions, these are passed as INPUT_GITHUB_TOKEN and GITHUB_REPOSITORY"
+  echo "GITHUB_TOKEN source could be: GITHUB_TOKEN, INPUT_GITHUB_TOKEN, or REGISTRY_TOKEN"
+  echo "GITHUB_REPO source could be: GITHUB_REPO, INPUT_RELEASE_REPO, or GITHUB_REPOSITORY"
+  env | grep -E "GITHUB_|TOKEN" | grep -v "TOKEN.*=" || echo "No relevant environment variables found"
+fi
+
+# Set GitHub Actions output
+if [ -n "$GITHUB_OUTPUT" ] && [ -d "$BUILD_DIR" ]; then
+  echo "release_asset_dir=${BUILD_DIR}" >> "$GITHUB_OUTPUT"
+  echo "Set output release_asset_dir=${BUILD_DIR}"
 fi
 
 echo "Release process completed successfully!"
