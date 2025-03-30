@@ -61,7 +61,7 @@ jobs:
     - name: Run go-release-action on test code
       uses: ./
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        github_token: ${{ secrets.REGISTRY_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
         goamd64: ${{ matrix.goamd64 }}
@@ -103,7 +103,7 @@ jobs:
     - name: Run go-release-action on test code
       uses: ./
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        github_token: ${{ secrets.REGISTRY_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
         goversion: ${{ matrix.goversion }}
@@ -135,7 +135,7 @@ jobs:
     - name: Run go-release-action on test code
       uses: ./
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        github_token: ${{ secrets.REGISTRY_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
         goversion: ${{ matrix.goversion }}
@@ -161,7 +161,7 @@ jobs:
     - name: Run go-release-action on test code
       uses: ./
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        github_token: ${{ secrets.REGISTRY_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
         goversion: https://go.dev/dl/go1.16.6.linux-amd64.tar.gz
@@ -189,7 +189,7 @@ jobs:
     - name: Run go-release-action on test code
       uses: ./
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        github_token: ${{ secrets.REGISTRY_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
         project_path: ./test/
@@ -216,7 +216,7 @@ jobs:
     - name: Run go-release-action on test code
       uses: ./
       with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+        github_token: ${{ secrets.REGISTRY_TOKEN }}
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
         project_path: ${{ matrix.project_path }}
