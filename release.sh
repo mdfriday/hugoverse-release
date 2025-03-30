@@ -25,9 +25,11 @@ elif [ -n "$GITHUB_REF" ] && [[ "$GITHUB_REF" == refs/tags/* ]]; then
   echo "Using version from GITHUB_REF tag: $VERSION"
 fi
 
-# Handle GitHub Actions input parameters
-GOOS=${GOOS:-$INPUT_GOOS}
-GOARCH=${GOARCH:-$INPUT_GOARCH}
+# Force Linux/amd64 build only
+GOOS="linux"
+GOARCH="amd64"
+
+# Handle other GitHub Actions input parameters
 EXTRA_FILES=${EXTRA_FILES:-$INPUT_EXTRA_FILES}
 PROJECT_PATH=${PROJECT_PATH:-$INPUT_PROJECT_PATH}
 PROJECT_PATH=${PROJECT_PATH:-.}
@@ -96,35 +98,10 @@ build_for_arch() {
   local current_dir=$(pwd)
   cd "${proj_path}"
   
-  # Set up architecture-specific environment
-  if [ "$arch" = "arm64" ] && [ "$HOST_ARCH" != "arm64" ]; then
-    echo "Using cross-compilation for ARM64..."
-    
-    # Make sure build-arm64.sh is executable and exists
-    if [ ! -f "/usr/local/bin/build-arm64.sh" ]; then
-      echo "ERROR: build-arm64.sh not found!"
-      cd "$current_dir"
-      return 1
-    fi
-    
-    # Copy current Go environment to build-arm64.sh
-    PATH=$PATH:/usr/local/go/bin
-    
-    # Use the build-arm64.sh script which sets all the necessary environment variables
-    /usr/local/bin/build-arm64.sh $(which go) build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
-    
-    # Check if build was successful
-    if [ $? -ne 0 ]; then
-      echo "ARM64 build failed. Check cross-compilation setup and dependencies."
-      cd "$current_dir"
-      return 1
-    fi
-  else
-    # Build for the host architecture
-    echo "Running: GOOS=linux GOARCH=${arch} CGO_ENABLED=1 go build -buildvcs=false -o ${output_path} -ldflags \"${ldflags}\" ."
-    GOOS=linux GOARCH=${arch} CGO_ENABLED=1 \
-      go build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
-  fi
+  # Build for the host architecture
+  echo "Running: GOOS=linux GOARCH=${arch} CGO_ENABLED=1 go build -buildvcs=false -o ${output_path} -ldflags \"${ldflags}\" ."
+  GOOS=linux GOARCH=${arch} CGO_ENABLED=1 \
+    go build -buildvcs=false -o ${output_path} -ldflags "${ldflags}" .
   
   # Restore original directory
   cd "$current_dir"
@@ -350,8 +327,9 @@ if [ "$MULTI_BINARY" = true ]; then
     create_extra_files "$path"
     create_main_go "$path" "$binary_name"
     
-    # Build the binary
-    build_for_arch "$GOARCH" "$path" "$binary_name" || {
+    # Build the binary for amd64 only
+    echo "Building for amd64 only"
+    build_for_arch "amd64" "$path" "$binary_name" || {
       echo "Failed to build $binary_name from $path"
       continue
     }
@@ -362,26 +340,9 @@ else
   create_extra_files "$PROJECT_PATH"
   create_main_go "$PROJECT_PATH" "$BINARY_NAME"
   
-  # Build for specified architectures
-  if [ -n "$GOARCH" ]; then
-    # Build for specific target architecture from GitHub Actions
-    echo "Using architecture from GitHub Actions: $GOARCH"
-    build_for_arch "$GOARCH" "$PROJECT_PATH" "$BINARY_NAME" || exit 1
-  elif [ -n "$TARGET_ARCH" ]; then
-    # Build for specific target architecture from environment
-    build_for_arch "$TARGET_ARCH" "$PROJECT_PATH" "$BINARY_NAME" || exit 1
-  else
-    # Build for amd64 first
-    build_for_arch "amd64" "$PROJECT_PATH" "$BINARY_NAME" || exit 1
-    
-    # Try building for arm64 if amd64 succeeded
-    echo "Attempting ARM64 build..."
-    if build_for_arch "arm64" "$PROJECT_PATH" "$BINARY_NAME"; then
-      echo "ARM64 build successful"
-    else
-      echo "ARM64 build failed, but amd64 build was successful. Continuing..."
-    fi
-  fi
+  # Build for amd64 only
+  echo "Building for amd64 only"
+  build_for_arch "amd64" "$PROJECT_PATH" "$BINARY_NAME" || exit 1
 fi
 
 # Upload to GitHub if token and repo are provided
